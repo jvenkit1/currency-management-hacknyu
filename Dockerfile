@@ -6,4 +6,4 @@ ADD . /code
 RUN pip install -r requirements.txt
 
 EXPOSE 3000
-CMD ['python', './code/app.py']
+CMD ["python3", "app.py"]

@@ -2,6 +2,10 @@ from flask import Flask, request
 from src.services import services
 
 def create():
+    """
+    Creates a flask model along with api routes for each endpoint
+    :return: success/failure for each api endpoint
+    """
     app=Flask(__name__)
 
     @app.route('/rewardUser', methods=['POST'])

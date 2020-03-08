@@ -7,11 +7,11 @@ This is a Python 3 micro service that performs Currency Management, for our Hack
 
 Rewards are provided using Stellar Lumens Blockchain APIs.
 
+The microservice runs on port 3000.
+
 # Provide:
-1. Microservice with controller
+1. Microservice with controller -- Done
 2. Dockerfile
 3. Helm chart
 4. Tests
 5. Swagger spec
-
-Total time - 60 mins
