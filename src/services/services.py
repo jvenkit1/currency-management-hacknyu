@@ -21,101 +21,141 @@ def chargeUser(uid, amount):
     """
     Charge the user for a transaction.
     """
-    def load_last_paging_token():
-    # Get the last paging token from a local database or file
-        return "now"
 
-    def save_paging_token(paging_token):
-        # In most cases, you should save this to a local database or file so that
-        # you can load it next time you stream new payments.
-        pass
+    def createAccount(public_key):
+        response = requests.get(f"https://friendbot.stellar.org?addr={public_key}")
+        if response.status_code == 200:
+            print(f"SUCCESS! You have a new account")
+        else:
+            print(f"ERROR! Response")
+
+    def createUser():
+        pair = Keypair.random()
+        print(f"Secret: {pair.secret}")
+        # Secret: SCMDRX7A7OVRPAGXLUVRNIYTWBLCS54OV7UH2TF5URSG4B4JQMUADCYU
+        print(f"Public Key: {pair.public_key}")
+        # Public Key: GAG7SXULMNWCW6LX42JKZOZRA2JJXQT23LYY32OXA6XECUQG7RZTQJHO
+        return pair
+
+    master = createUser()
+    worker = createUser()
+    createAccount(master.public_key)
+    createAccount(worker.public_key)
+
+    def getAccountIfExists(public_key):
+        try:
+            return server.load_account(public_key)
+        except NotFoundError:
+            return None
 
     server = Server("https://horizon-testnet.stellar.org")
-    account_id = "GA4QPSGBHK7RAJZBBEDCIKFPSYLG3O2UTBT2I56RN4B5KIQF2GFZKSMF"
+    master_private_key = Keypair.from_secret(master.secret)
+    worker_public_key = worker.public_key
+    worker_private_key = Keypair.from_secret(worker.secret)
 
-    # Create an API call to query payments involving the account.
-    payments = server.payments().for_account(account_id)
+    def sendMoney(source_public_key, source_private_key, destination_public_key, amt):
+        base_fee = server.fetch_base_fee()
+        transaction = (
+            TransactionBuilder(
+                source_account=getAccountIfExists(source_public_key),
+                network_passphrase=Network.TESTNET_NETWORK_PASSPHRASE,
+                base_fee=base_fee,
+            )
+                # Because Stellar allows transaction in many currencies, you must specify the asset type.
+                # Here we are sending Lumens.
+                .append_payment_op(destination=destination_public_key, amount=str(amt), asset_code="XLM")
+                # A memo allows you to add your own metadata to a transaction. It's
+                # optional and does not affect how Stellar treats the transaction.
+                .add_text_memo("Test Transaction")
+                # Wait a maximum of three minutes for the transaction
+                .set_timeout(10)
+                .build()
+        )
 
-    # If some payments have already been handled, start the results from the
-    # last seen payment. (See below in `handle_payment` where it gets saved.)
-    last_token = load_last_paging_token()
-    if last_token:
-        payments.cursor(last_token)
+    # Sign the transaction to prove you are actually the person sending it.
+        transaction.sign(source_private_key)
+        return transaction
 
-    # `stream` will send each recorded payment, one by one, then keep the
-    # connection open and continue to send you new payments as they occur.
-    for payment in payments.stream():
-        # Record the paging token so we can start from here next time.
-        save_paging_token(payment["paging_token"])
+    transaction = sendMoney(worker.public_key, worker_private_key, master.public_key, 100)
 
-        # We only process `payment`, ignore `create_account` and `account_merge`.
-        if payment["type"] != "payment":
-            continue
-
-        # The payments stream includes both sent and received payments. We
-        # only want to process received payments here.
-        if payment['to'] != account_id:
-            continue
-
-        # In Stellar’s API, Lumens are referred to as the “native” type. Other
-        # asset types have more detailed information.
-        if payment["asset_type"] == "native":
-            asset = "Lumens"
-        else:
-            asset = f"{payment['asset_code']}:{payment['asset_issuer']}"
-        print(f"{payment['amount']} {asset} from {payment['from']}")
-
-        return None
+    try:
+        response = server.submit_transaction(transaction)
+        print(f"Response: {response}")
+    except (BadRequestError, BadResponseError) as err:
+        print(f"Something went wrong!\n{err}{response}")
 
 def rewardUser(uid, amount):
     """
     Reward the user by increasing his karma points via blockchain
     """
+    def createAccount(public_key):
+        response = requests.get(f"https://friendbot.stellar.org?addr={public_key}")
+        if response.status_code == 200:
+            print(f"SUCCESS! You have a new account")
+        else:
+            print(f"ERROR! Response")
+
+    def createUser():
+        pair = Keypair.random()
+        print(f"Secret: {pair.secret}")
+        # Secret: SCMDRX7A7OVRPAGXLUVRNIYTWBLCS54OV7UH2TF5URSG4B4JQMUADCYU
+        print(f"Public Key: {pair.public_key}")
+        # Public Key: GAG7SXULMNWCW6LX42JKZOZRA2JJXQT23LYY32OXA6XECUQG7RZTQJHO
+        return pair
+
+    master = createUser()
+    worker = createUser()
+    createAccount(master.public_key)
+    createAccount(worker.public_key)
+
+    def getAccountIfExists(public_key):
+        try:
+            return server.load_account(public_key)
+        except NotFoundError:
+            return None
+
     server = Server("https://horizon-testnet.stellar.org")
-    source_key = Keypair.from_secret("SA6HHDJ5KZKYFZVOOGHENIPVKV2HGKICN4RYQ2UZNZHZP7ZIYSQIQDCI")
-    destination_id = "GA4QPSGBHK7RAJZBBEDCIKFPSYLG3O2UTBT2I56RN4B5KIQF2GFZKSMF"
+    master_private_key = Keypair.from_secret(master.secret)
+    worker_public_key = worker.public_key
+    worker_private_key = Keypair.from_secret(worker.secret)
 
-    # First, check to make sure that the destination account exists.
-    # You could skip this, but if the account does not exist, you will be charged
-    # the transaction fee when the transaction fails.
-    try:
-        server.load_account(destination_id)
-    except NotFoundError:
-        # If the account is not found, surface an error message for logging.
-        raise Exception("The destination account does not exist!")
-
-    # If there was no error, load up-to-date information on your account.
-    source_account = server.load_account(source_key.public_key)
-
-    # Let's fetch base_fee from network
-    base_fee = server.fetch_base_fee()
-
-    # Start building the transaction.
-    transaction = (
-        TransactionBuilder(
-            source_account=source_account,
-            network_passphrase=Network.TESTNET_NETWORK_PASSPHRASE,
-            base_fee=base_fee,
+    def sendMoney(source_public_key, source_private_key, destination_public_key, amt):
+        base_fee = server.fetch_base_fee()
+        transaction = (
+            TransactionBuilder(
+                source_account=getAccountIfExists(source_public_key),
+                network_passphrase=Network.TESTNET_NETWORK_PASSPHRASE,
+                base_fee=base_fee,
+            )
+                # Because Stellar allows transaction in many currencies, you must specify the asset type.
+                # Here we are sending Lumens.
+                .append_payment_op(destination=destination_public_key, amount=str(amt), asset_code="XLM")
+                # A memo allows you to add your own metadata to a transaction. It's
+                # optional and does not affect how Stellar treats the transaction.
+                .add_text_memo("Test Transaction")
+                # Wait a maximum of three minutes for the transaction
+                .set_timeout(10)
+                .build()
         )
-            # Because Stellar allows transaction in many currencies, you must specify the asset type.
-            # Here we are sending Lumens.
-            .append_payment_op(destination=destination_id, amount="10", asset_code="XLM")
-            # A memo allows you to add your own metadata to a transaction. It's
-            # optional and does not affect how Stellar treats the transaction.
-            .add_text_memo("Test Transaction")
-            # Wait a maximum of three minutes for the transaction
-            .set_timeout(10)
-            .build()
-    )
 
     # Sign the transaction to prove you are actually the person sending it.
-    transaction.sign(source_key)
+        transaction.sign(source_private_key)
+        return transaction
+
+
+    transaction = sendMoney(master.public_key, master_private_key, worker.public_key, 100)
 
     try:
-        # And finally, send it off to Stellar!
         response = server.submit_transaction(transaction)
         print(f"Response: {response}")
     except (BadRequestError, BadResponseError) as err:
-        print(f"Something went wrong!\n{err}")
+        print(f"Something went wrong!\n{err}{response}")
 
-    return None
+
+    transaction = sendMoney(worker.public_key, worker_private_key, master.public_key, 100)
+
+    try:
+        response = server.submit_transaction(transaction)
+        print(f"Response: {response}")
+    except (BadRequestError, BadResponseError) as err:
+        print(f"Something went wrong!\n{err}{response}")
